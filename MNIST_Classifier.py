@@ -26,10 +26,6 @@ train_loader = DataLoader(train_data, batch_size=64, pin_memory=True)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# ============================================ #
-#             INSERT YOUR CODE HERE            #
-# ============================================ #
-
 class DeepNeuralNet(nn.Module):
   def __init__(self, input_width, hidden_layer_profile, output_width, output_activation=None):
     super().__init__()
@@ -173,60 +169,44 @@ def train(dataloader, net, loss_fn, optimiser, epochs, epoch_frequency=1, device
 
   return least_loss
 
-net = DeepNeuralNet(input_width=28*28, hidden_layer_profile=[512, 256], output_width=10, output_activation=nn.Softmax(dim=1))
+################################################################################
 
-training_dataloader = train_loader
-loss_fn = nn.CrossEntropyLoss()
-optimiser = torch.optim.Adam(net.parameters(), lr=0.001)
+doTrain = True
+if doTrain:
+  net = DeepNeuralNet(input_width=28*28, hidden_layer_profile=[512, 256], output_width=10, output_activation=nn.Softmax(dim=1))
 
-least_loss = train(training_dataloader, net, loss_fn, optimiser, epochs=15, verbosity=2)
+  training_dataloader = train_loader
+  loss_fn = nn.CrossEntropyLoss()
+  optimiser = torch.optim.Adam(net.parameters(), lr=0.001)
+  net.to(device)
+  least_loss = train(training_dataloader, net, loss_fn, optimiser, epochs=15, verbosity=2)
 
-model = net
+  # Save the trained model
+  torch.save(net.state_dict(), "mnist_model.pth")
+  print("Model saved as mnist_model.pth")
+  model = net
+else:
+  # Load the trained model
+  model = DeepNeuralNet(input_width=28*28, hidden_layer_profile=[512, 256], output_width=10, output_activation=nn.Softmax(dim=1))
+  model.load_state_dict(torch.load("mnist_model.pth"))
 
-# ============================================ #
-#         DO NOT CHANGE BELOW THIS LINE        #
-# ============================================ #
-
-class MNISTTest(Dataset):
-    def __init__(self):
-        super().__init__()
-        self.data = self.load_data()
-
-    def load_data(self):
-      url = 'https://polybox.ethz.ch/index.php/s/gXlEFkKHFRI8COI/download'
-      local_filename = 'test_images.npy'
-      if not os.path.exists(local_filename):
-          response = requests.get(url)
-          if response.status_code == 200:
-              with open(local_filename, 'wb') as f:
-                  f.write(response.content)
-          else:
-              raise Exception("Failed to download the file.")
-      return torch.tensor(np.load(local_filename), dtype=torch.float32)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        image = self.data[idx].flatten()
-
-        return image
+model.to(device)
 
 
-test_data = MNISTTest()
+
+test_data = datasets.MNIST(
+    root='data',
+    train=False,  # This loads the test set
+    download=True,
+    transform=Compose([
+        ToTensor(),
+        Lambda(lambda x: torch.flatten(x, start_dim=0))  # Flatten images into vectors
+    ]),
+)
+
 test_loader = DataLoader(test_data, batch_size=128, pin_memory=True, shuffle=False, drop_last=False)
 
-
-# Save results
+# test model
 model.eval()
-all_predictions_probs = []
-
-with torch.no_grad():
-    for data in test_loader:
-        data = data.to(device)
-        output = model(data)
-        all_predictions_probs.extend(output.cpu().numpy())
-
-csv_path = 'challenge.csv'
-np.savetxt(csv_path, all_predictions_probs, delimiter=',', fmt='%.6f')
-
+test_accuracy = testing_loop(test_loader, model)
+print(f"\nTest Accuracy: {test_accuracy:.2%}")
