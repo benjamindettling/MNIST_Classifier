@@ -6,9 +6,10 @@ from torchvision.transforms import Compose, ToTensor, Lambda
 from torch.utils.data import DataLoader
 import os
 import time
+from PIL import Image
 
 # Select modus: 0 = train from scratch, 1 = load and continue training, 2 = load and evaluate only
-modus = 2
+modus = 3
 
 # Check device
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -95,10 +96,11 @@ def train(dataloader, net, loss_fn, optimiser, epochs, device=device):
 model = DeepNeuralNet(input_width=28*28, hidden_layer_profile=[512, 256], output_width=10, output_activation=nn.Softmax(dim=1))
 model.to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+loss_fn = nn.CrossEntropyLoss()
 
 
 # Preload model if modus is 1 or 2, or if no saved model exists
-if modus in [1, 2] and os.path.exists("mnist_model.pth"):
+if modus in [1, 2, 3] and os.path.exists("mnist_model.pth"):
     print("Loading existing model...")
     checkpoint = torch.load("mnist_model.pth", map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
@@ -107,7 +109,7 @@ else: print("Train model from scratch...")
 
 # Perform training if modus is 0 or 1
 if modus in [0, 1]:
-    train(train_loader, model, loss_fn, optimizer, epochs=3)
+    train(train_loader, model, loss_fn, optimizer, epochs=30)
 
     # Save the trained model
     torch.save({'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()}, "mnist_model.pth")
@@ -115,5 +117,25 @@ if modus in [0, 1]:
 
 # Test model
 model.eval()
-test_accuracy = testing_loop(test_loader, model)
-print(f"\nTest Accuracy: {test_accuracy:.2%}")
+
+if modus == 3:
+    # Load and preprocess the image
+    image_path = "test6.png"
+    print(f"\nPerforming single image classification on: {image_path}")
+    image = Image.open(image_path).convert("L")  # Convert to grayscale
+    image = image.resize((28, 28))  # Resize to 28x28
+    image = ToTensor()(image)  # Convert to tensor
+    image = image.flatten().unsqueeze(0).to(device)  # Flatten and add batch dimension
+
+    # Make prediction
+    with torch.no_grad():
+        output = model(image)
+        print(output)
+        predicted_digit = output.argmax(dim=1).item()
+
+    print(f"\nPredicted digit: {predicted_digit}")
+
+else:
+    # Standard test on full dataset for modus 0, 1, 2
+    test_accuracy = testing_loop(test_loader, model)
+    print(f"\nTest Accuracy: {test_accuracy:.2%}")
